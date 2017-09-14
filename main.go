@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
+	"strings"
 )
 
 var port = os.Getenv("PORT")
@@ -13,7 +16,7 @@ var port = os.Getenv("PORT")
 func main() {
 
 	if port == "" {
-		port = "8080"
+		port = "5000"
 	}
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
@@ -31,92 +34,27 @@ func main() {
 
 func handleConnection(conn net.Conn) {
 
-	// req, err := http.ReadRequest(reader)
+	var buf bytes.Buffer
 
-	// if err != nil {
-	// 	if err != io.EOF {
-	// 		log.Printf("failed to read request: %s", err)
-	// 	}
-	// 	return
-	// }
+	t2conn := io.Writer(&buf)
+	tconn := io.TeeReader(conn, t2conn)
 
-	// if req.Method != "CONNECT" {
-	handleHTTPTraffic(conn)
+	s := strings.Split(strings.Split(buf.String(), "\n")[0], " ")
 
-	// return
-	// }
-
-	// b, _ := httputil.DumpRequest(req, true)
-	// fmt.Println(string(b))
-	//
-	// probably trying to connect to a https server and using CONNECT method to do so
-	// if req.Method == "CONNECT" {
-	//
-	// for {
-	//
-	// con, err := net.Dial("tcp", "localhost:4000")
-	// if err != nil {
-	// 	log.Printf("error in dialing: %v\n", err)
-	// 	return
-	// }
-	// // conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %d Connection Established\n", http.StatusOK)))
-
-	// go func(conn, con net.Conn) {
-	// 	_, err := io.Copy(conn, con)
-	// 	if err != nil {
-	// 		if err != io.EOF {
-	// 			log.Printf("error in reading data: %v", err)
-	// 		}
-	// 	}
-	// }(conn, con)
-
-	// _, err = io.Copy(con, conn)
-
-	// if err != nil {
-	// 	if err != io.EOF {
-	// 		log.Printf("error in reading data: %v", err)
-	// 	}
-	// }
-
-	// conn.Close()
-
-	// }
-
-	// } else {
-
-	// most likely http traffic
-	// handleHTTPTraffic(conn)
-
-	// }
-}
-
-func handleHTTPTraffic(conn net.Conn) {
-
-	for {
-		con, err := net.Dial("tcp", "localhost:4000")
-		if err != nil {
-			log.Printf("error in dialing: %v\n", err)
-			return
-		}
-
-		defer con.Close()
-		// conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %d Connection Established\n", http.StatusOK)))
-
-		go func(conn, con net.Conn) {
-			_, err := io.Copy(conn, con)
-			if err != nil {
-				if err != io.EOF {
-					log.Printf("error in reading data: %v", err)
-				}
-			}
-		}(con, conn)
-
-		_, err = io.Copy(conn, con)
-
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("error in reading data: %v", err)
-			}
-		}
+	var oConn net.Conn
+	var err error
+	if s[0] == "CONNECT" {
+		oConn, err = net.Dial("tcp", s[1])
+		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %d Connection Established\n", http.StatusOK)))
+	} else {
+		oConn, err = net.Dial("tcp", fmt.Sprintf("%s:80", "www.ishanjain.me"))
 	}
+	if err != nil {
+		conn.Close()
+		log.Println(err.Error())
+	}
+	go io.Copy(conn, oConn)
+
+	io.Copy(oConn, tconn)
+
 }
